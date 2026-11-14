@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Своя игра</title>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#0a1a5c;color:#fff;font-family:system-ui,sans-serif}
+.s{display:none;height:100%;padding:16px;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:radial-gradient(circle at 50% 20%,#1a3bbf,#0a1a5c 70%)}
+.s.on{display:flex}
+h1{color:#ffd23f;font-size:40px;margin:0 0 10px;text-shadow:0 3px 0 #a67c00;text-align:center}
+button,.btn{background:#ffd23f;color:#0a1a5c;border:0;border-radius:14px;padding:14px 22px;font-size:18px;font-weight:700;min-width:240px;text-align:center;display:inline-block}
+button.g,.btn.g{background:#2a4bd6;color:#fff;min-width:0;padding:10px 14px;font-size:15px}
+input[type=text],select{padding:14px;font-size:18px;border-radius:12px;border:0;width:240px;text-align:center}
+input[type=file]{display:none}
+.av{width:64px;height:64px;border-radius:50%;overflow:hidden;background:#2a4bd6;border:3px solid #ffd23f;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;flex:none}
+.av img{width:100%;height:100%;object-fit:cover}
+.big{width:120px;height:120px}
+#room{padding:8px;justify-content:flex-start;align-items:stretch;gap:8px}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.c{display:flex;flex-direction:column;align-items:center;gap:4px;width:76px;font-size:13px;text-align:center}
+.c b{max-width:76px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#hf{display:flex;flex-direction:column;align-items:center;border:2px solid #ffd23f;border-radius:14px;padding:6px;background:#0d2380}
+#hf small{color:#ffd23f;font-weight:700}
+.ctl{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+#bn{flex:1;min-height:0;background:#000;border:3px solid #ffd23f;border-radius:14px;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+#bn:empty::before{content:"Ожидание ведущего…";color:#ffd23f;font-size:22px}
+#bn img,#bn video{max-width:100%;max-height:100%}
+#pl{display:flex;gap:8px;overflow-x:auto;padding:4px 2px;min-height:112px;align-items:flex-start}
+#pan{display:none;background:#0d2380;border-radius:14px;padding:10px;gap:8px;flex-wrap:wrap;justify-content:center}
+#pan.on{display:flex}
+.hint{font-size:13px;opacity:.8;text-align:center;max-width:300px}
+</style></head><body>
+
+<div class="s on" id="menu"><h1>СВОЯ<br>ИГРА</h1>
+<button onclick="go('start')">Начать игру</button>
+<button onclick="openSet()">Настройки</button></div>
+
+<div class="s" id="start"><h1>Игра</h1>
+<button onclick="go('crt')">Создать комнату</button>
+<button onclick="go('jn')">Присоединиться</button>
+<button class="g" onclick="go('menu')">← Назад</button></div>
+
+<div class="s" id="set"><h1>Настройки</h1>
+<div class="av big" id="sav"></div>
+<label class="btn g">Выбрать фото из галереи<input type="file" accept="image/*" id="avf" onchange="pickAva(this)"></label>
+<input type="text" id="nm" maxlength="14" placeholder="Ваш ник">
+<button onclick="saveSet()">Сохранить</button></div>
+
+<div class="s" id="crt"><h1>Комната</h1>
+<div>Сколько игроков (без ведущего)</div>
+<select id="sz"><option>2</option><option>3</option><option>4</option><option selected>5</option><option>6</option><option>7</option><option>8</option></select>
+<button id="cb" onclick="create()">Создать</button>
+<div class="hint">Вы станете ведущим. Появится код — отправьте его игрокам.</div>
+<button class="g" onclick="go('start')">← Назад</button></div>
+
+<div class="s" id="jn"><h1>Вход</h1>
+<input type="text" id="jc" maxlength="5" placeholder="КОД КОМНАТЫ" style="text-transform:uppercase">
+<button id="jb" onclick="join()">Войти</button>
+<button class="g" onclick="go('start')">← Назад</button></div>
+
+<div class="s" id="room">
+<div class="top"><div id="hf"></div>
+<div class="ctl"><button class="g" onclick="copyCode()">Код: <span id="code"></span></button>
+<button class="g" id="mic" onclick="toggleMic()">🎤 Вкл</button>
+<button class="g" onclick="location.reload()">Выйти</button>
+<button class="g" id="addb" style="display:none" onclick="$('#pan').classList.toggle('on')">➕ На баннер</button></div></div>
+<div id="pan">
+<label class="btn g">🔍 Фото/видео<input type="file" accept="image/*,video/*" id="bf"></label>
+<label class="btn g">🎵 Музыка<input type="file" accept="audio/*" id="bm"></label>
+<button class="g" onclick="showBanner()">Показать</button>
+<button class="g" onclick="clearBanner()">Убрать</button></div>
+<div id="bn"></div>
+<div id="pl"></div></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const P='svoya-igra-';
+const esc=s=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let me={name:localStorage.getItem('n')||'Игрок',ava:localStorage.getItem('a')||''};
+let peer,isHost=false,code='',max=5,conns={},players={},calls={},bcalls={},aud={},local,muted=false,hostId='',started=false;
+let ctx,bs=null,curImg=null,music=null;
+function go(i){document.querySelectorAll('.s').forEach(e=>e.classList.toggle('on',e.id==i))}
+function avh(a,n,c){return `<div class="av ${c||''}">${a?`<img src="${a}">`:esc((n||'?')[0])}</div>`}
+function shrink(f,m,sq){return new Promise(r=>{const i=new Image();i.onload=()=>{let w=i.width,h=i.height,sx=0,sy=0,sw=w,sh=h;
+ if(sq){const s=Math.min(w,h);sx=(w-s)/2;sy=(h-s)/2;sw=sh=s;w=h=m}else{const k=Math.min(1,m/Math.max(w,h));w=Math.round(w*k);h=Math.round(h*k)}
+ const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(i,sx,sy,sw,sh,0,0,w,h);r(c.toDataURL('image/jpeg',.75))};i.src=URL.createObjectURL(f)})}
+function openSet(){$('#nm').value=me.name;$('#sav').outerHTML=avh(me.ava,me.name,'big').replace('class="av big"','class="av big" id="sav"');go('set')}
+async function pickAva(el){const f=el.files[0];if(!f)return;me.ava=await shrink(f,128,true);openSet()}
+function saveSet(){me.name=($('#nm').value.trim()||'Игрок').slice(0,14);localStorage.setItem('n',me.name);try{localStorage.setItem('a',me.ava)}catch(e){}go('menu')}
+async function getMic(){try{return await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}})}catch(e){alert('Микрофон не разрешён — вы будете только слушать. Разрешите микрофон в настройках браузера.');const c=new (window.AudioContext||webkitAudioContext)();return c.createMediaStreamDestination().stream}}
+function toggleMic(){muted=!muted;local&&local.getAudioTracks().forEach(t=>t.enabled=!muted);$('#mic').textContent=muted?'🔇 Выкл':'🎤 Вкл'}
+function copyCode(){try{navigator.clipboard.writeText(code)}catch(e){}}
+function bc(m){Object.values(conns).forEach(c=>c.open&&c.send(m))}
+function rc(){const a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let s='';for(let i=0;i<5;i++)s+=a[Math.floor(Math.random()*a.length)];return s}
+function startRoom(){started=true;go('room');$('#code').textContent=code;$('#addb').style.display=isHost?'':'none';render()}
+function card(p){return `<div class="c">${avh(p.ava,p.name)}<b>${esc(p.name)}</b></div>`}
+function render(){const e=Object.entries(players);const h=e.find(x=>x[1].host);
+ $('#hf').innerHTML=(h?card(h[1]):'')+'<small>Ведущий</small>';
+ $('#pl').innerHTML=e.filter(x=>!x[1].host).map(x=>card(x[1])).join('')}
+function pushState(){bc({t:'state',players,max,code});render()}
+async function create(){$('#cb').disabled=true;max=+$('#sz').value;local=await getMic();isHost=true;tryId()}
+function tryId(){code=rc();hostId=P+code;peer=new Peer(hostId);
+ peer.on('open',()=>{players[hostId]={name:me.name,ava:me.ava,host:1};startRoom()});
+ peer.on('error',e=>{if(e.type=='unavailable-id'){peer.destroy();tryId()}else alert('Ошибка связи: '+e.type)});
+ peer.on('connection',hostConn);peer.on('call',onCall)}
+function hostConn(c){
+ c.on('data',d=>{if(d.t!='join')return;
+  if(Object.keys(players).length-1>=max){c.send({t:'full'});setTimeout(()=>c.close(),600);return}
+  conns[c.peer]=c;players[c.peer]={name:String(d.name).slice(0,14),ava:d.ava};pushState();
+  callPeer(c.peer,local,{k:'v'});
+  if(curImg)c.send({t:'img',src:curImg});
+  if(bs&&bs.getTracks().length)callPeer(c.peer,bs,{k:'b'})});
+ c.on('close',()=>{delete conns[c.peer];delete players[c.peer];dropCall(c.peer);pushState()})}
+async function join(){const c=$('#jc').value.trim().toUpperCase();if(!c)return;$('#jb').disabled=true;
+ local=await getMic();code=c;hostId=P+c;peer=new Peer();
+ peer.on('open',()=>{const cn=peer.connect(hostId,{reliable:true});let ok=0;
+  cn.on('open',()=>{ok=1;conns[hostId]=cn;cn.send({t:'join',name:me.name,ava:me.ava})});
+  cn.on('data',onData);cn.on('close',()=>{alert('Связь с ведущим потеряна');location.reload()});
+  setTimeout(()=>{if(!ok){alert('Комната не найдена');location.reload()}},12000)});
+ peer.on('call',onCall);
+ peer.on('error',e=>{alert(e.type=='peer-unavailable'?'Комната не найдена':'Ошибка связи: '+e.type);if(!started)location.reload()})}
+function onData(d){
+ if(d.t=='full'){alert('Комната заполнена');location.reload()}
+ if(d.t=='state'){players=d.players;max=d.max;if(!started)startRoom();else render();
+  for(const id in players){if(id!=peer.id&&id!=hostId&&id>peer.id&&!calls[id])callPeer(id,local,{k:'v'})}}
+ if(d.t=='img')$('#bn').innerHTML=`<img src="${d.src}">`;
+ if(d.t=='clr')$('#bn').innerHTML=''}
+function callPeer(id,s,meta){const c=peer.call(id,s,{metadata:meta});hook(c,id,meta.k)}
+function onCall(c){const k=c.metadata&&c.metadata.k;c.answer(k=='v'?local:undefined);hook(c,c.peer,k)}
+function hook(c,id,k){if(k=='v')calls[id]=c;else bcalls[id]=c;
+ c.on('stream',s=>{if(k=='v'){let a=aud[id];if(!a){a=aud[id]=document.createElement('audio');a.autoplay=true;document.body.append(a)}a.srcObject=s;a.play().catch(()=>{})}
+  else showStream(s)});
+ c.on('close',()=>{if(k=='v')delete calls[id];else delete bcalls[id]})}
+function dropCall(id){[calls[id],bcalls[id]].forEach(c=>c&&c.close());delete calls[id];delete bcalls[id];if(aud[id]){aud[id].remove();delete aud[id]}}
+function showStream(s){const b=$('#bn');if(s.getVideoTracks().length){let v=b.querySelector('video');if(!v){b.innerHTML='';v=document.createElement('video');v.autoplay=true;v.playsInline=true;b.append(v);v.onclick=()=>v.play()}v.srcObject=s;v.play().catch(()=>{})}
+ else{let a=b.querySelector('audio');if(!a){a=document.createElement('audio');a.autoplay=true;b.append(a)}a.srcObject=s;a.play().catch(()=>{})}}
+function stopLocal(){const b=$('#bn');b.querySelectorAll('video,audio').forEach(v=>v.pause());b.innerHTML='';if(music){music.pause();music=null}
+ Object.values(bcalls).forEach(c=>c.close());bcalls={};if(bs){bs.getTracks().forEach(t=>t.stop());bs=null}curImg=null}
+function clearBanner(){stopLocal();bc({t:'clr'})}
+async function showBanner(){
+ const f=$('#bf').files[0],m=$('#bm').files[0];if(!f&&!m)return alert('Сначала выберите фото/видео или музыку');
+ stopLocal();bc({t:'clr'});
+ ctx=ctx||new (window.AudioContext||webkitAudioContext)();await ctx.resume();
+ const dest=ctx.createMediaStreamDestination(),ms=new MediaStream(),b=$('#bn');
+ const wire=el=>{const s=ctx.createMediaElementSource(el);s.connect(dest);s.connect(ctx.destination)};
+ if(f&&f.type.startsWith('image/')){curImg=await shrink(f,900,false);b.innerHTML=`<img src="${curImg}">`;bc({t:'img',src:curImg})}
+ if(f&&f.type.startsWith('video/')){const v=document.createElement('video');v.src=URL.createObjectURL(f);v.playsInline=true;v.controls=true;v.loop=true;b.append(v);wire(v);await v.play().catch(()=>{});
+  const st=v.captureStream?v.captureStream():null;if(st)st.getVideoTracks().forEach(t=>ms.addTrack(t));else alert('Этот браузер не умеет передавать видео. Откройте сайт в Chrome на Android.')}
+ if(m){music=new Audio(URL.createObjectURL(m));music.loop=true;wire(music);music.play().catch(()=>{})}
+ dest.stream.getAudioTracks().forEach(t=>ms.addTrack(t));bs=ms;
+ if(ms.getTracks().length)Object.keys(conns).forEach(id=>callPeer(id,ms,{k:'b'}));
+ $('#pan').classList.remove('on')}
+</script></body></html>
+  
